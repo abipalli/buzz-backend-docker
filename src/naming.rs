@@ -28,6 +28,7 @@ impl AgentIdentity {
         })
     }
 
+    #[cfg(test)]
     pub fn pubkey_hex(&self) -> &str {
         &self.pubkey_hex
     }
@@ -70,7 +71,10 @@ mod tests {
     fn derives_pubkey_and_names() {
         let id = AgentIdentity::from_nsec(NSEC).unwrap();
         assert_eq!(id.pubkey_hex().len(), 64);
-        assert_eq!(id.container_name(), format!("buzz-agent-{}", &id.pubkey_hex()[..12]));
+        assert_eq!(
+            id.container_name(),
+            format!("buzz-agent-{}", &id.pubkey_hex()[..12])
+        );
         assert_eq!(id.labels()[LABEL_AGENT_PUBKEY].len(), 32);
     }
 

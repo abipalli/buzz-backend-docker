@@ -22,14 +22,23 @@ pub struct Timing {
 
 impl Timing {
     pub fn production() -> Self {
-        Self { deadline: Duration::from_secs(600), poll: Duration::from_secs(1), settle: Duration::from_secs(5) }
+        Self {
+            deadline: Duration::from_secs(600),
+            poll: Duration::from_secs(1),
+            settle: Duration::from_secs(5),
+        }
     }
 }
 
 const LIVE: [&str; 3] = ["running", "paused", "restarting"];
 const TERMINATED: [&str; 2] = ["exited", "dead"];
 
-pub fn deploy(sub: &dyn Substrate, identity: &AgentIdentity, desired: &Desired, timing: &Timing) -> Result<String, String> {
+pub fn deploy(
+    sub: &dyn Substrate,
+    identity: &AgentIdentity,
+    desired: &Desired,
+    timing: &Timing,
+) -> Result<String, String> {
     let name = desired.spec.name.clone();
     let started = Instant::now();
     let mut attempted = false;
@@ -43,7 +52,8 @@ pub fn deploy(sub: &dyn Substrate, identity: &AgentIdentity, desired: &Desired, 
         let observed = sub.inspect(&name)?;
         let Some(obs) = observed else {
             if attempted {
-                return Err(attempt_error.unwrap_or_else(|| format!("{name} disappeared right after it was created")));
+                return Err(attempt_error
+                    .unwrap_or_else(|| format!("{name} disappeared right after it was created")));
             }
             attempted = true;
             match create(sub, desired) {
@@ -98,10 +108,18 @@ fn create(sub: &dyn Substrate, desired: &Desired) -> Result<(), RunError> {
     sub.run(&desired.spec, &env).map(|_| ())
 }
 
-fn startup_failure(sub: &dyn Substrate, name: &str, obs: &Observed, attempt_error: Option<String>) -> String {
+fn startup_failure(
+    sub: &dyn Substrate,
+    name: &str,
+    obs: &Observed,
+    attempt_error: Option<String>,
+) -> String {
     let logs = format!("{} logs {name}", sub.describe());
     match (obs.status.as_str(), attempt_error) {
-        (_, Some(err)) => format!("{err} (container left as {:?} for inspection: {logs})", obs.status),
+        (_, Some(err)) => format!(
+            "{err} (container left as {:?} for inspection: {logs})",
+            obs.status
+        ),
         ("created", None) => format!("{name} was created but never started; inspect with: {logs}"),
         (status, None) => format!(
             "the agent exited during startup ({status}, exit code {}); inspect with: {logs}. \
@@ -119,12 +137,14 @@ mod tests {
 
     const NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
+    type RunHook = Box<dyn Fn(&RunSpec) -> Result<Observed, RunError>>;
+
     #[derive(Default)]
     struct Fake {
         container: RefCell<Option<Observed>>,
         runs: RefCell<Vec<BTreeMap<String, String>>>,
         removes: RefCell<u32>,
-        on_run: RefCell<Option<Box<dyn Fn(&RunSpec) -> Result<Observed, RunError>>>>,
+        on_run: RefCell<Option<RunHook>>,
         dies_after_inspects: RefCell<Option<u32>>,
     }
 
@@ -147,14 +167,23 @@ mod tests {
             self.runs.borrow_mut().push(env.clone());
             let made = match self.on_run.borrow().as_ref() {
                 Some(f) => f(spec)?,
-                None => Observed { id: "new".into(), status: "running".into(), labels: spec.labels.clone(), exit_code: 0 },
+                None => Observed {
+                    id: "new".into(),
+                    status: "running".into(),
+                    labels: spec.labels.clone(),
+                    exit_code: 0,
+                },
             };
             *self.container.borrow_mut() = Some(made);
             Ok("new".into())
         }
         fn remove(&self, _id: &str) -> Result<RemoveOutcome, String> {
             *self.removes.borrow_mut() += 1;
-            let running = self.container.borrow().as_ref().is_some_and(|c| c.status == "running");
+            let running = self
+                .container
+                .borrow()
+                .as_ref()
+                .is_some_and(|c| c.status == "running");
             if running {
                 return Ok(RemoveOutcome::StillRunning);
             }
@@ -189,17 +218,29 @@ mod tests {
     }
 
     fn fast() -> Timing {
-        Timing { deadline: Duration::from_secs(5), poll: Duration::from_millis(1), settle: Duration::from_millis(5) }
+        Timing {
+            deadline: Duration::from_secs(5),
+            poll: Duration::from_millis(1),
+            settle: Duration::from_millis(5),
+        }
     }
 
     fn ours(status: &str, exit_code: i64) -> Observed {
-        Observed { id: "old".into(), status: status.into(), labels: identity().labels(), exit_code }
+        Observed {
+            id: "old".into(),
+            status: status.into(),
+            labels: identity().labels(),
+            exit_code,
+        }
     }
 
     #[test]
     fn no_container_creates_one_and_confirms_startup() {
         let fake = Fake::default();
-        assert_eq!(deploy(&fake, &identity(), &desired(), &fast()).unwrap(), identity().container_name());
+        assert_eq!(
+            deploy(&fake, &identity(), &desired(), &fast()).unwrap(),
+            identity().container_name()
+        );
         assert_eq!(fake.runs.borrow().len(), 1);
     }
 
@@ -217,7 +258,10 @@ mod tests {
         for status in ["exited", "dead", "created"] {
             let fake = Fake::default();
             *fake.container.borrow_mut() = Some(ours(status, 0));
-            assert!(deploy(&fake, &identity(), &desired(), &fast()).is_ok(), "{status}");
+            assert!(
+                deploy(&fake, &identity(), &desired(), &fast()).is_ok(),
+                "{status}"
+            );
             assert_eq!(*fake.removes.borrow(), 1, "{status}");
             assert_eq!(fake.runs.borrow().len(), 1, "{status}");
         }
@@ -227,7 +271,10 @@ mod tests {
     fn foreign_container_with_our_name_is_never_touched() {
         for labels in [
             BTreeMap::new(),
-            BTreeMap::from([(LABEL_MANAGED_BY.to_string(), "buzz-backend-docker".to_string())]),
+            BTreeMap::from([(
+                LABEL_MANAGED_BY.to_string(),
+                "buzz-backend-docker".to_string(),
+            )]),
             {
                 let mut l = identity().labels();
                 l.insert(LABEL_PUBKEY_FULL.into(), "f".repeat(64));
@@ -235,7 +282,12 @@ mod tests {
             },
         ] {
             let fake = Fake::default();
-            *fake.container.borrow_mut() = Some(Observed { id: "x".into(), status: "exited".into(), labels, exit_code: 0 });
+            *fake.container.borrow_mut() = Some(Observed {
+                id: "x".into(),
+                status: "exited".into(),
+                labels,
+                exit_code: 0,
+            });
             let err = deploy(&fake, &identity(), &desired(), &fast()).unwrap_err();
             assert!(err.contains("not created by this provider"), "{err}");
             assert_eq!(*fake.removes.borrow(), 0);
@@ -250,13 +302,20 @@ mod tests {
         let err = deploy(&fake, &identity(), &desired(), &fast()).unwrap_err();
         assert!(err.contains("exit code 1"), "{err}");
         assert_eq!(fake.runs.borrow().len(), 1, "retried within one call");
-        assert_eq!(*fake.removes.borrow(), 0, "cleared the failed attempt within the same call");
+        assert_eq!(
+            *fake.removes.borrow(),
+            0,
+            "cleared the failed attempt within the same call"
+        );
     }
 
     #[test]
     fn losing_a_create_race_adopts_the_winner() {
         let fake = Fake::default();
-        let sub = Racing { inner: &fake, winner: ours("running", 0) };
+        let sub = Racing {
+            inner: &fake,
+            winner: ours("running", 0),
+        };
         assert!(deploy(&sub, &identity(), &desired(), &fast()).is_ok());
         assert_eq!(*fake.removes.borrow(), 0, "deleted the winner");
     }
@@ -294,7 +353,11 @@ mod tests {
     #[test]
     fn run_failure_surfaces_dockers_error() {
         let fake = Fake::default();
-        *fake.on_run.borrow_mut() = Some(Box::new(|_| Err(RunError::Failed("docker run failed: pull access denied".into()))));
+        *fake.on_run.borrow_mut() = Some(Box::new(|_| {
+            Err(RunError::Failed(
+                "docker run failed: pull access denied".into(),
+            ))
+        }));
         let err = deploy(&fake, &identity(), &desired(), &fast()).unwrap_err();
         assert!(err.contains("pull access denied"), "{err}");
     }

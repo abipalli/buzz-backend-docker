@@ -34,8 +34,9 @@ fn main() {
     let response = respond(&input);
     println!(
         "{}",
-        serde_json::to_string(&response)
-            .unwrap_or_else(|e| format!(r#"{{"ok":false,"error":"could not serialize a response: {e}"}}"#))
+        serde_json::to_string(&response).unwrap_or_else(|e| format!(
+            r#"{{"ok":false,"error":"could not serialize a response: {e}"}}"#
+        ))
     );
 }
 
@@ -54,8 +55,15 @@ fn respond(input: &str) -> Response {
     match request {
         Request::Info => Response::info(),
         Request::Deploy(deploy) => match prepare(&deploy).and_then(|(cfg, identity, desired)| {
-            let substrate = DockerCli { context: cfg.context.clone() };
-            reconcile::deploy(&substrate, &identity, &desired, &reconcile::Timing::production())
+            let substrate = DockerCli {
+                context: cfg.context.clone(),
+            };
+            reconcile::deploy(
+                &substrate,
+                &identity,
+                &desired,
+                &reconcile::Timing::production(),
+            )
         }) {
             Ok(agent_id) => Response::deployed(agent_id),
             Err(e) => Response::error(e),
@@ -75,7 +83,9 @@ fn refuse_relay_mesh(raw: &serde_json::Value) -> Option<String> {
 
 /// Everything decided before the first Docker call: config, identity, the
 /// container's environment and shape. Pure, so it is tested without Docker.
-fn prepare(request: &wire::DeployRequest) -> Result<(config::ProviderConfig, AgentIdentity, reconcile::Desired), String> {
+fn prepare(
+    request: &wire::DeployRequest,
+) -> Result<(config::ProviderConfig, AgentIdentity, reconcile::Desired), String> {
     let cfg = config::parse(&request.provider_config)?;
     let identity = AgentIdentity::from_nsec(&request.agent.private_key_nsec)?;
 
@@ -98,7 +108,9 @@ fn prepare(request: &wire::DeployRequest) -> Result<(config::ProviderConfig, Age
 
     let mut mounts = Vec::new();
     if let (Some(volume), Some(subpath)) = (&cfg.ca_volume, &cfg.ca_volume_subpath) {
-        mounts.push(format!("type=volume,src={volume},dst={CA_FILE},readonly,volume-subpath={subpath}"));
+        mounts.push(format!(
+            "type=volume,src={volume},dst={CA_FILE},readonly,volume-subpath={subpath}"
+        ));
         env.insert(CA_ENV.to_string(), CA_ENV_VALUE.to_string());
     }
 
@@ -113,7 +125,10 @@ fn prepare(request: &wire::DeployRequest) -> Result<(config::ProviderConfig, Age
         "stop_timeout_secs": STOP_TIMEOUT_SECS,
     });
     let mut labels = identity.labels();
-    labels.insert(LABEL_CREATE_INTENT.into(), hex::encode(Sha256::digest(intent.to_string())));
+    labels.insert(
+        LABEL_CREATE_INTENT.into(),
+        hex::encode(Sha256::digest(intent.to_string())),
+    );
     labels.insert(LABEL_IMAGE.into(), cfg.image.clone());
 
     let spec = RunSpec {
@@ -137,12 +152,19 @@ mod tests {
 
     const NSEC: &str = "nsec1vl029mgpspedva04g90vltkh6fvh240zqtv9k0t9af8935ke9laqsnlfe5";
 
-    fn deploy_request(agent_extra: serde_json::Value, provider_config: serde_json::Value) -> wire::DeployRequest {
+    fn deploy_request(
+        agent_extra: serde_json::Value,
+        provider_config: serde_json::Value,
+    ) -> wire::DeployRequest {
         let mut agent = json!({"relay_url": "wss://relay.example", "private_key_nsec": NSEC, "auth_tag": "tag"});
-        agent.as_object_mut().unwrap().extend(agent_extra.as_object().unwrap().clone());
-        let Request::Deploy(d) =
-            serde_json::from_value(json!({"op": "deploy", "agent": agent, "provider_config": provider_config})).unwrap()
-        else {
+        agent
+            .as_object_mut()
+            .unwrap()
+            .extend(agent_extra.as_object().unwrap().clone());
+        let Request::Deploy(d) = serde_json::from_value(
+            json!({"op": "deploy", "agent": agent, "provider_config": provider_config}),
+        )
+        .unwrap() else {
             panic!("not a deploy")
         };
         *d
@@ -158,14 +180,24 @@ mod tests {
     #[test]
     fn info_declares_protocol_version_one() {
         let v = serde_json::to_value(respond(r#"{"op":"info","request_id":"r"}"#)).unwrap();
-        assert_eq!((v["ok"].clone(), v["protocol_version"].clone(), v["name"].clone()), (json!(true), json!(1), json!("docker")));
+        assert_eq!(
+            (
+                v["ok"].clone(),
+                v["protocol_version"].clone(),
+                v["name"].clone()
+            ),
+            (json!(true), json!(1), json!("docker"))
+        );
         assert!(v["config_schema"]["properties"]["image"].is_object());
     }
 
     #[test]
     fn bad_input_is_an_in_band_error() {
         for input in ["not json", r#"{"op":"undeploy"}"#] {
-            assert_eq!(serde_json::to_value(respond(input)).unwrap()["ok"], json!(false));
+            assert_eq!(
+                serde_json::to_value(respond(input)).unwrap()["ok"],
+                json!(false)
+            );
         }
     }
 
@@ -190,19 +222,27 @@ mod tests {
         assert!(identity.owns(&desired.spec.labels));
         assert_eq!(desired.spec.labels[LABEL_CREATE_INTENT].len(), 64);
         assert_eq!(desired.env["BUZZ_ACP_EXIT_AFTER_INACTIVITY"], "7200");
-        assert!(!desired.spec.mounts.iter().any(|m| m.contains("volume-subpath")));
+        assert!(!desired
+            .spec
+            .mounts
+            .iter()
+            .any(|m| m.contains("volume-subpath")));
     }
 
     #[test]
     fn zero_inactivity_means_no_reaper_env() {
-        let (_, _, desired) = prepare(&deploy_request(json!({}), json!({"inactivity_seconds": 0}))).unwrap();
+        let (_, _, desired) =
+            prepare(&deploy_request(json!({}), json!({"inactivity_seconds": 0}))).unwrap();
         assert!(!desired.env.contains_key("BUZZ_ACP_EXIT_AFTER_INACTIVITY"));
     }
 
     #[test]
     fn host_paths_are_dropped_and_cli_hijacks_refused() {
-        let (_, _, desired) =
-            prepare(&deploy_request(json!({"env_vars": {"PATH": "/Users/me/bin", "HOME": "/Users/me"}}), json!({}))).unwrap();
+        let (_, _, desired) = prepare(&deploy_request(
+            json!({"env_vars": {"PATH": "/Users/me/bin", "HOME": "/Users/me"}}),
+            json!({}),
+        ))
+        .unwrap();
         assert!(!desired.env.contains_key("PATH") && !desired.env.contains_key("HOME"));
         for key in ["DOCKER_HOST", "SSH_AUTH_SOCK"] {
             let err = prepare_err(&deploy_request(json!({"env_vars": {key: "x"}}), json!({})));
@@ -226,14 +266,27 @@ mod tests {
 
     #[test]
     fn intent_changes_with_shape_not_with_secrets() {
-        let a = prepare(&deploy_request(json!({}), json!({}))).unwrap().2.spec.labels[LABEL_CREATE_INTENT].clone();
-        let b = prepare(&deploy_request(json!({"env_vars": {"OPENAI_API_KEY": "sk-other"}}), json!({})))
+        let a = prepare(&deploy_request(json!({}), json!({})))
             .unwrap()
             .2
             .spec
             .labels[LABEL_CREATE_INTENT]
             .clone();
-        let c = prepare(&deploy_request(json!({}), json!({"memory": "8g"}))).unwrap().2.spec.labels[LABEL_CREATE_INTENT].clone();
+        let b = prepare(&deploy_request(
+            json!({"env_vars": {"OPENAI_API_KEY": "sk-other"}}),
+            json!({}),
+        ))
+        .unwrap()
+        .2
+        .spec
+        .labels[LABEL_CREATE_INTENT]
+            .clone();
+        let c = prepare(&deploy_request(json!({}), json!({"memory": "8g"})))
+            .unwrap()
+            .2
+            .spec
+            .labels[LABEL_CREATE_INTENT]
+            .clone();
         assert_eq!(a, b, "secret values leaked into the fingerprint");
         assert_ne!(a, c, "shape change not reflected");
     }

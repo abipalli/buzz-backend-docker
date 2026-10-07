@@ -8,7 +8,6 @@ pub const DEFAULT_IMAGE: &str =
 pub const DEFAULT_INACTIVITY_SECONDS: u64 = 7200;
 pub const DEFAULT_CPUS: &str = "2";
 pub const DEFAULT_MEMORY: &str = "4g";
-pub const CA_MOUNT_DIR: &str = "/etc/buzz-ca";
 
 const MAX_FIELDS: usize = 20;
 const MAX_BYTES: usize = 64 * 1024;
@@ -34,7 +33,10 @@ fn validate_shape(cfg: &Value) -> Result<&serde_json::Map<String, Value>, String
         _ => return Err("provider_config must be an object".into()),
     };
     if map.len() > MAX_FIELDS {
-        return Err(format!("provider_config has {} fields; the limit is {MAX_FIELDS}", map.len()));
+        return Err(format!(
+            "provider_config has {} fields; the limit is {MAX_FIELDS}",
+            map.len()
+        ));
     }
     if cfg.to_string().len() > MAX_BYTES {
         return Err(format!("provider_config exceeds {MAX_BYTES} bytes"));
@@ -61,7 +63,10 @@ fn empty_map() -> &'static serde_json::Map<String, Value> {
     EMPTY.get_or_init(serde_json::Map::new)
 }
 
-fn string_field(map: &serde_json::Map<String, Value>, field: &str) -> Result<Option<String>, String> {
+fn string_field(
+    map: &serde_json::Map<String, Value>,
+    field: &str,
+) -> Result<Option<String>, String> {
     match map.get(field) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) if s.trim().is_empty() => Ok(None),
@@ -78,9 +83,13 @@ fn is_docker_name(s: &str) -> bool {
 }
 
 fn is_host_entry(s: &str) -> bool {
-    let Some((host, target)) = s.split_once(':') else { return false };
+    let Some((host, target)) = s.split_once(':') else {
+        return false;
+    };
     !host.is_empty()
-        && host.chars().all(|c| c.is_ascii_alphanumeric() || ".-".contains(c))
+        && host
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || ".-".contains(c))
         && (target == "host-gateway" || target.parse::<std::net::IpAddr>().is_ok())
 }
 
@@ -90,7 +99,9 @@ pub fn parse(cfg: &Value) -> Result<ProviderConfig, String> {
     let context = string_field(map, "context")?;
     if let Some(c) = &context {
         if !is_docker_name(c) {
-            return Err(format!("provider_config.context {c:?} is not a valid Docker context name"));
+            return Err(format!(
+                "provider_config.context {c:?} is not a valid Docker context name"
+            ));
         }
     }
 
@@ -104,15 +115,24 @@ pub fn parse(cfg: &Value) -> Result<ProviderConfig, String> {
     let network = string_field(map, "network")?;
     if let Some(n) = &network {
         if !is_docker_name(n) || matches!(n.as_str(), "host" | "none") {
-            return Err(format!("provider_config.network {n:?} is not an allowed Docker network"));
+            return Err(format!(
+                "provider_config.network {n:?} is not an allowed Docker network"
+            ));
         }
     }
 
     let add_hosts: Vec<String> = string_field(map, "add_hosts")?
-        .map(|s| s.split(',').map(|h| h.trim().to_string()).filter(|h| !h.is_empty()).collect())
+        .map(|s| {
+            s.split(',')
+                .map(|h| h.trim().to_string())
+                .filter(|h| !h.is_empty())
+                .collect()
+        })
         .unwrap_or_default();
     if let Some(bad) = add_hosts.iter().find(|h| !is_host_entry(h)) {
-        return Err(format!("provider_config.add_hosts entry {bad:?} must be host:ip or host:host-gateway"));
+        return Err(format!(
+            "provider_config.add_hosts entry {bad:?} must be host:ip or host:host-gateway"
+        ));
     }
 
     let ca_volume = string_field(map, "ca_volume")?;
@@ -120,7 +140,9 @@ pub fn parse(cfg: &Value) -> Result<ProviderConfig, String> {
     match (&ca_volume, &ca_volume_subpath) {
         (Some(v), sub) => {
             if !is_docker_name(v) {
-                return Err(format!("provider_config.ca_volume {v:?} is not a valid volume name"));
+                return Err(format!(
+                    "provider_config.ca_volume {v:?} is not a valid volume name"
+                ));
             }
             let Some(p) = sub else {
                 return Err("provider_config.ca_volume needs ca_volume_subpath: only the certificate file is mounted, never the whole volume".into());
@@ -129,7 +151,9 @@ pub fn parse(cfg: &Value) -> Result<ProviderConfig, String> {
                 return Err(format!("provider_config.ca_volume_subpath {p:?} must be a relative path inside the volume"));
             }
         }
-        (None, Some(_)) => return Err("provider_config.ca_volume_subpath requires ca_volume".into()),
+        (None, Some(_)) => {
+            return Err("provider_config.ca_volume_subpath requires ca_volume".into())
+        }
         (None, None) => {}
     }
 
@@ -142,20 +166,46 @@ pub fn parse(cfg: &Value) -> Result<ProviderConfig, String> {
             .trim()
             .parse()
             .map_err(|_| "provider_config.inactivity_seconds must be a non-negative integer")?,
-        Some(_) => return Err("provider_config.inactivity_seconds must be a non-negative integer".into()),
+        Some(_) => {
+            return Err("provider_config.inactivity_seconds must be a non-negative integer".into())
+        }
     };
 
     let cpus = string_field(map, "cpus")?.unwrap_or_else(|| DEFAULT_CPUS.to_string());
     if !cpus.parse::<f64>().is_ok_and(|c| c > 0.0) {
-        return Err(format!("provider_config.cpus {cpus:?} must be a positive number"));
+        return Err(format!(
+            "provider_config.cpus {cpus:?} must be a positive number"
+        ));
     }
     let memory = string_field(map, "memory")?.unwrap_or_else(|| DEFAULT_MEMORY.to_string());
-    let (digits, unit) = memory.split_at(memory.trim_end_matches(|c: char| c.is_ascii_alphabetic()).len());
-    if digits.is_empty() || !digits.chars().all(|c| c.is_ascii_digit()) || !matches!(unit.to_ascii_lowercase().as_str(), "" | "b" | "k" | "m" | "g") {
-        return Err(format!("provider_config.memory {memory:?} must look like 512m or 4g"));
+    let (digits, unit) = memory.split_at(
+        memory
+            .trim_end_matches(|c: char| c.is_ascii_alphabetic())
+            .len(),
+    );
+    if digits.is_empty()
+        || !digits.chars().all(|c| c.is_ascii_digit())
+        || !matches!(
+            unit.to_ascii_lowercase().as_str(),
+            "" | "b" | "k" | "m" | "g"
+        )
+    {
+        return Err(format!(
+            "provider_config.memory {memory:?} must look like 512m or 4g"
+        ));
     }
 
-    Ok(ProviderConfig { context, image, network, add_hosts, ca_volume, ca_volume_subpath, inactivity_seconds, cpus, memory })
+    Ok(ProviderConfig {
+        context,
+        image,
+        network,
+        add_hosts,
+        ca_volume,
+        ca_volume_subpath,
+        inactivity_seconds,
+        cpus,
+        memory,
+    })
 }
 
 pub fn config_schema() -> Value {
@@ -184,7 +234,10 @@ mod tests {
         let c = parse(&json!({})).unwrap();
         assert_eq!(c.image, DEFAULT_IMAGE);
         assert_eq!(c.inactivity_seconds, DEFAULT_INACTIVITY_SECONDS);
-        assert_eq!((c.cpus.as_str(), c.memory.as_str()), (DEFAULT_CPUS, DEFAULT_MEMORY));
+        assert_eq!(
+            (c.cpus.as_str(), c.memory.as_str()),
+            (DEFAULT_CPUS, DEFAULT_MEMORY)
+        );
         assert_eq!(parse(&Value::Null).unwrap(), c);
     }
 
@@ -197,22 +250,35 @@ mod tests {
             .iter()
             .map(|(k, v)| (k.clone(), v["default"].clone()))
             .collect();
-        assert_eq!(parse(&Value::Object(defaults)).unwrap(), parse(&json!({})).unwrap());
+        assert_eq!(
+            parse(&Value::Object(defaults)).unwrap(),
+            parse(&json!({})).unwrap()
+        );
     }
 
     #[test]
     fn secret_shaped_keys_are_refused() {
-        for key in ["api_key", "password", "registry_token", "ssh-key-path", "Credential"] {
+        for key in [
+            "api_key",
+            "password",
+            "registry_token",
+            "ssh-key-path",
+            "Credential",
+        ] {
             assert!(parse(&json!({key: "x"})).is_err(), "{key} accepted");
         }
-        assert!(parse(&json!({"keyring_hint": "x"})).is_ok(), "word match, not substring");
+        assert!(
+            parse(&json!({"keyring_hint": "x"})).is_ok(),
+            "word match, not substring"
+        );
     }
 
     #[test]
     fn nested_and_oversized_configs_are_refused() {
         assert!(parse(&json!({"network": {"name": "x"}})).is_err());
         assert!(parse(&json!({"add_hosts": ["a:1.2.3.4"]})).is_err());
-        let many: serde_json::Map<String, Value> = (0..21).map(|i| (format!("f{i}"), json!("x"))).collect();
+        let many: serde_json::Map<String, Value> =
+            (0..21).map(|i| (format!("f{i}"), json!("x"))).collect();
         assert!(parse(&Value::Object(many)).is_err());
         assert!(parse(&json!("not an object")).is_err());
     }
@@ -232,24 +298,47 @@ mod tests {
         assert!(parse(&json!({"network": "host"})).is_err());
         assert!(parse(&json!({"add_hosts": "relay.internal"})).is_err());
         assert!(parse(&json!({"add_hosts": "relay.internal:not-an-ip"})).is_err());
-        let c = parse(&json!({"add_hosts": "a.internal:host-gateway, b.internal:10.0.0.3"})).unwrap();
-        assert_eq!(c.add_hosts, ["a.internal:host-gateway", "b.internal:10.0.0.3"]);
+        let c =
+            parse(&json!({"add_hosts": "a.internal:host-gateway, b.internal:10.0.0.3"})).unwrap();
+        assert_eq!(
+            c.add_hosts,
+            ["a.internal:host-gateway", "b.internal:10.0.0.3"]
+        );
     }
 
     #[test]
     fn ca_subpath_must_stay_inside_the_volume() {
         assert!(parse(&json!({"ca_volume_subpath": "certs/root_ca.crt"})).is_err());
         for bad in ["/etc/passwd", "../x", "certs//x"] {
-            assert!(parse(&json!({"ca_volume": "v", "ca_volume_subpath": bad})).is_err(), "{bad} accepted");
+            assert!(
+                parse(&json!({"ca_volume": "v", "ca_volume_subpath": bad})).is_err(),
+                "{bad} accepted"
+            );
         }
-        assert!(parse(&json!({"ca_volume": "docker_stepca_data"})).is_err(), "whole-volume mount allowed");
-        assert!(parse(&json!({"ca_volume": "docker_stepca_data", "ca_volume_subpath": "certs/root_ca.crt"})).is_ok());
+        assert!(
+            parse(&json!({"ca_volume": "docker_stepca_data"})).is_err(),
+            "whole-volume mount allowed"
+        );
+        assert!(parse(
+            &json!({"ca_volume": "docker_stepca_data", "ca_volume_subpath": "certs/root_ca.crt"})
+        )
+        .is_ok());
     }
 
     #[test]
     fn zero_inactivity_is_a_legal_choice() {
-        assert_eq!(parse(&json!({"inactivity_seconds": 0})).unwrap().inactivity_seconds, 0);
-        assert_eq!(parse(&json!({"inactivity_seconds": "60"})).unwrap().inactivity_seconds, 60);
+        assert_eq!(
+            parse(&json!({"inactivity_seconds": 0}))
+                .unwrap()
+                .inactivity_seconds,
+            0
+        );
+        assert_eq!(
+            parse(&json!({"inactivity_seconds": "60"}))
+                .unwrap()
+                .inactivity_seconds,
+            60
+        );
         assert!(parse(&json!({"inactivity_seconds": -1})).is_err());
     }
 

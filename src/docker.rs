@@ -52,7 +52,14 @@ pub trait Substrate {
 /// Environment the docker CLI itself reads. An agent variable with one of
 /// these names would reconfigure the CLI instead of reaching the container.
 const CLI_ENV: &[&str] = &[
-    "PATH", "HOME", "USER", "TMPDIR", "LANG", "SSH_AUTH_SOCK", "XDG_RUNTIME_DIR", "XDG_CONFIG_HOME",
+    "PATH",
+    "HOME",
+    "USER",
+    "TMPDIR",
+    "LANG",
+    "SSH_AUTH_SOCK",
+    "XDG_RUNTIME_DIR",
+    "XDG_CONFIG_HOME",
 ];
 
 pub fn cli_reserved(key: &str) -> bool {
@@ -84,7 +91,10 @@ impl DockerCli {
 /// A GUI-launched desktop hands providers launchd's minimal PATH; the docker
 /// CLI and its ssh/credential helpers usually live in these directories.
 fn augmented_path() -> String {
-    let mut dirs = vec!["/opt/homebrew/bin".to_string(), "/usr/local/bin".to_string()];
+    let mut dirs = vec![
+        "/opt/homebrew/bin".to_string(),
+        "/usr/local/bin".to_string(),
+    ];
     if let Ok(home) = std::env::var("HOME") {
         dirs.push(format!("{home}/.local/bin"));
     }
@@ -119,7 +129,11 @@ struct Inspect {
 }
 
 fn stderr_text(out: &std::process::Output) -> String {
-    String::from_utf8_lossy(&out.stderr).trim().chars().take(2000).collect()
+    String::from_utf8_lossy(&out.stderr)
+        .trim()
+        .chars()
+        .take(2000)
+        .collect()
 }
 
 impl Substrate for DockerCli {
@@ -128,7 +142,9 @@ impl Substrate for DockerCli {
             .command()
             .args(["container", "inspect", name])
             .output()
-            .map_err(|e| format!("could not run docker: {e} (is the docker CLI installed and on PATH?)"))?;
+            .map_err(|e| {
+                format!("could not run docker: {e} (is the docker CLI installed and on PATH?)")
+            })?;
         if !out.status.success() {
             let err = stderr_text(&out);
             if err.to_ascii_lowercase().contains("no such") {
@@ -148,8 +164,22 @@ impl Substrate for DockerCli {
 
     fn run(&self, spec: &RunSpec, env: &BTreeMap<String, String>) -> Result<String, RunError> {
         let mut cmd = self.command();
-        cmd.args(["run", "--detach", "--pull", "missing", "--name", &spec.name, "--hostname", &spec.name]);
-        cmd.args(["--restart", "no", "--stop-timeout", &spec.stop_timeout_secs.to_string()]);
+        cmd.args([
+            "run",
+            "--detach",
+            "--pull",
+            "missing",
+            "--name",
+            &spec.name,
+            "--hostname",
+            &spec.name,
+        ]);
+        cmd.args([
+            "--restart",
+            "no",
+            "--stop-timeout",
+            &spec.stop_timeout_secs.to_string(),
+        ]);
         cmd.args(["--cap-drop", "ALL", "--security-opt", "no-new-privileges"]);
         cmd.args(["--cpus", &spec.cpus, "--memory", &spec.memory]);
         if let Some(net) = &spec.network {
@@ -169,7 +199,9 @@ impl Substrate for DockerCli {
             cmd.args(["--env", k]);
         }
         cmd.arg(&spec.image);
-        let out = cmd.output().map_err(|e| RunError::Failed(format!("could not run docker: {e}")))?;
+        let out = cmd
+            .output()
+            .map_err(|e| RunError::Failed(format!("could not run docker: {e}")))?;
         if out.status.success() {
             return Ok(String::from_utf8_lossy(&out.stdout).trim().to_string());
         }
@@ -214,7 +246,13 @@ mod tests {
 
     #[test]
     fn cli_reserved_covers_docker_and_shell_env() {
-        for k in ["DOCKER_HOST", "DOCKER_CONTEXT", "PATH", "HOME", "SSH_AUTH_SOCK"] {
+        for k in [
+            "DOCKER_HOST",
+            "DOCKER_CONTEXT",
+            "PATH",
+            "HOME",
+            "SSH_AUTH_SOCK",
+        ] {
             assert!(cli_reserved(k), "{k}");
         }
         for k in ["BUZZ_PRIVATE_KEY", "OPENAI_API_KEY", "GOOSE_MODEL"] {
