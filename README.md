@@ -11,17 +11,26 @@ you see it online, you mention it to work with it, and `!shutdown` stops it.
 
 ## Quick start
 
-On the Mac that runs Buzz Desktop (your server needs Docker and SSH key login):
+**Recommended:** follow the [setup guide](https://github.com/abipalli/buzz-backend-docker/wiki/Recommended-setup).
+It connects your Mac and server over [Tailscale](https://tailscale.com) and
+gives the server a short SSH profile name, so nothing is exposed to the
+internet. With that in place (`ssh agents` works and the server user can run
+`docker`), on the Mac that runs Buzz Desktop:
 
 ```sh
 brew install abipalli/tap/buzz-backend-docker
-buzz-backend-docker setup ssh://you@your-server
+buzz-backend-docker setup ssh://agents
 ```
 
 `setup` makes the provider visible to Buzz Desktop and checks that Docker on
-your server answers. Then in Buzz Desktop, open an agent's settings, choose the
-**docker** backend, set **Docker host** to `ssh://you@your-server`, and press
-**Start**. Use `ssh://you@your-server:2222` for a non-standard SSH port.
+the server answers. Then in Buzz Desktop, open an agent's settings, choose the
+**docker** backend, set **Docker host** to `ssh://agents`, and press **Start**.
+
+Any `ssh://user@host[:port]` works too; the profile just keeps keys, ports and
+connection reuse in `~/.ssh/config`. The wiki also covers
+[exposing the relay](https://github.com/abipalli/buzz-backend-docker/wiki/Exposing-the-relay)
+with Tailscale Serve or Traefik, and
+[troubleshooting](https://github.com/abipalli/buzz-backend-docker/wiki/Troubleshooting).
 
 ## Settings
 
@@ -29,7 +38,7 @@ Only **Docker host** is needed; the rest have working defaults.
 
 | Setting | Default | What it does |
 |---|---|---|
-| Docker host | this machine | The server that runs the agent, e.g. `ssh://you@your-server`. Uses your SSH keys; never put a password here |
+| Docker host | this machine | The server that runs the agent, e.g. `ssh://agents` (an SSH profile) or `ssh://you@your-server`. Uses your SSH setup; never put a password here |
 | Docker context | — | Alternative to Docker host: a name from `docker context ls` |
 | Agent image | `buzz-sprig` with native TLS roots, pinned | The agent runtime. Custom images must be built `FROM` it. `:latest` is refused |
 | Docker network | default bridge | Network to join; created if missing. Give agents their own; `host` is refused |
