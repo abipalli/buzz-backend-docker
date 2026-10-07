@@ -20,7 +20,7 @@ jobs:
     env:
       TARGET: ${{ matrix.target }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Tag matches Cargo.toml
         shell: bash
         run: |
@@ -46,7 +46,7 @@ jobs:
           name="buzz-backend-docker-$GITHUB_REF_NAME-$TARGET.tar.gz"
           tar -C "target/$TARGET/release" -czf "$name" buzz-backend-docker
           shasum -a 256 "$name" > "$name.sha256"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ matrix.target }}
           path: buzz-backend-docker-*.tar.gz*
@@ -55,7 +55,7 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
@@ -68,8 +68,8 @@ jobs:
     needs: release
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
         with:
           path: dist
           merge-multiple: true
