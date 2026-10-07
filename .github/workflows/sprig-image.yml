@@ -1,0 +1,67 @@
+name: sprig-image
+
+# Builds block/buzz's agent runtime (buzz-sprig) with native TLS roots, so
+# agents trust the system store and any private CA mounted by the provider.
+# See docs/native-roots.md.
+
+on:
+  workflow_dispatch:
+    inputs:
+      buzz_ref:
+        description: block/buzz commit to build (full SHA)
+        required: true
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/${{ github.repository_owner }}/buzz-sprig
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    env:
+      BUZZ_REF: ${{ inputs.buzz_ref }}
+      ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          repository: block/buzz
+          ref: ${{ inputs.buzz_ref }}
+      - name: Switch the relay socket to native roots
+        run: |
+          grep -q '"rustls-tls-webpki-roots"' Cargo.toml
+          sed -i 's/"rustls-tls-webpki-roots"/"rustls-tls-native-roots"/' Cargo.toml
+          sed -i 's/cargo build --locked --profile sprig/cargo build --profile sprig/' Dockerfile.sprig
+          git diff --stat
+      - name: Build and push
+        run: |
+          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          tag="$IMAGE:${BUZZ_REF:0:7}-nativeroots-$ARCH"
+          docker build -f Dockerfile.sprig -t "$tag" \
+            --label org.opencontainers.image.source=https://github.com/${{ github.repository }} \
+            --label org.opencontainers.image.description="buzz-sprig from block/buzz ${BUZZ_REF:0:7}, modified to use native TLS roots" \
+            --label org.opencontainers.image.licenses=Apache-2.0 \
+            --label org.opencontainers.image.revision="$BUZZ_REF" .
+          docker push "$tag"
+
+  manifest:
+    needs: build
+    runs-on: ubuntu-24.04
+    env:
+      BUZZ_REF: ${{ inputs.buzz_ref }}
+    steps:
+      - name: Join architectures
+        run: |
+          echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          base="$IMAGE:${BUZZ_REF:0:7}-nativeroots"
+          docker buildx imagetools create -t "$base" "$base-amd64" "$base-arm64"
+          digest=$(docker buildx imagetools inspect "$base" --format '{{json .Manifest}}' | jq -r .digest)
+          echo "### $IMAGE@$digest" >> "$GITHUB_STEP_SUMMARY"
+          echo "$IMAGE@$digest"
