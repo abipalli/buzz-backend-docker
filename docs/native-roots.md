@@ -41,6 +41,9 @@ image ships Alpine's `ca-certificates` bundle.
 
 ## Building the image
 
+This repo publishes it: run the `sprig-image` workflow with a block/buzz commit,
+then pin the printed digest as `DEFAULT_IMAGE` in `src/config.rs`. By hand:
+
 ```sh
 git clone https://github.com/block/buzz && cd buzz
 git checkout <commit>

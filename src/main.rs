@@ -7,6 +7,7 @@ mod docker;
 mod env;
 mod naming;
 mod reconcile;
+mod setup;
 mod wire;
 
 use docker::{DockerCli, RunSpec};
@@ -26,6 +27,19 @@ const CA_ENV_VALUE: &str = "/etc/ssl/certs:/etc/buzz-ca";
 const DROPPED_ENV: [&str; 2] = ["PATH", "HOME"];
 
 fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        None => {}
+        Some("setup") => std::process::exit(setup::run(args.get(1).map(String::as_str))),
+        Some("--version" | "-V") => {
+            println!("buzz-backend-docker {}", env!("CARGO_PKG_VERSION"));
+            return;
+        }
+        Some(_) => {
+            eprintln!("{}", setup::USAGE);
+            std::process::exit(2);
+        }
+    }
     let mut input = String::new();
     if let Err(e) = std::io::stdin().read_to_string(&mut input) {
         eprintln!("could not read the request from stdin: {e}");
@@ -56,8 +70,12 @@ fn respond(input: &str) -> Response {
         Request::Info => Response::info(),
         Request::Deploy(deploy) => match prepare(&deploy).and_then(|(cfg, identity, desired)| {
             let substrate = DockerCli {
+                host: cfg.host.clone(),
                 context: cfg.context.clone(),
             };
+            if let Some(network) = &cfg.network {
+                substrate.ensure_network(network)?;
+            }
             reconcile::deploy(
                 &substrate,
                 &identity,

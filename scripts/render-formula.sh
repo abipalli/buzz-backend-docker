@@ -42,11 +42,10 @@ $(asset x86_64-unknown-linux-musl)
 
   def caveats
     <<~EOS
-      Buzz Desktop opened from Finder or the Dock does not search Homebrew's
-      bin directory. Link the provider where Desktop always looks:
+      Finish with one command (links the provider where Buzz Desktop looks and
+      checks your server):
 
-        mkdir -p ~/.local/bin
-        ln -sf #{HOMEBREW_PREFIX}/bin/buzz-backend-docker ~/.local/bin/buzz-backend-docker
+        buzz-backend-docker setup ssh://you@your-server
     EOS
   end
 

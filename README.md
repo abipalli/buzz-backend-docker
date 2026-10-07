@@ -11,35 +11,29 @@ you see it online, you mention it to work with it, and `!shutdown` stops it.
 
 ## Quick start
 
-On the Mac that runs Buzz Desktop:
+On the Mac that runs Buzz Desktop (your server needs Docker and SSH key login):
 
 ```sh
 brew install abipalli/tap/buzz-backend-docker
-mkdir -p ~/.local/bin
-ln -sf "$(brew --prefix)/bin/buzz-backend-docker" ~/.local/bin/buzz-backend-docker
+buzz-backend-docker setup ssh://you@your-server
 ```
 
-The link matters: Desktop opened from the Dock doesn't search Homebrew's
-directory, but it always searches `~/.local/bin`.
-
-Point Docker at your server (SSH needs key login, no password prompt):
-
-```sh
-docker context create my-server --docker "host=ssh://me@my-server"
-docker --context my-server ps
-```
-
-In Buzz Desktop, open an agent's settings, choose the **docker** backend, set
-**Docker context** to `my-server`, and press **Start**.
+`setup` makes the provider visible to Buzz Desktop and checks that Docker on
+your server answers. Then in Buzz Desktop, open an agent's settings, choose the
+**docker** backend, set **Docker host** to `ssh://you@your-server`, and press
+**Start**. Use `ssh://you@your-server:2222` for a non-standard SSH port.
 
 ## Settings
 
+Only **Docker host** is needed; the rest have working defaults.
+
 | Setting | Default | What it does |
 |---|---|---|
-| Docker context | current context | Which Docker host runs the agent. Its credentials come from `docker context`, never from these settings |
-| Agent image | upstream `buzz-sprig`, pinned | The agent runtime. Custom images must be built `FROM` buzz-sprig. `:latest` is refused |
-| Docker network | default bridge | Network to join. Give agents their own; `host` is refused |
-| Extra hosts | — | `name:ip` or `name:host-gateway`, comma-separated — e.g. a relay behind a reverse proxy on the same host |
+| Docker host | this machine | The server that runs the agent, e.g. `ssh://you@your-server`. Uses your SSH keys; never put a password here |
+| Docker context | — | Alternative to Docker host: a name from `docker context ls` |
+| Agent image | `buzz-sprig` with native TLS roots, pinned | The agent runtime. Custom images must be built `FROM` it. `:latest` is refused |
+| Docker network | default bridge | Network to join; created if missing. Give agents their own; `host` is refused |
+| Extra hosts | — | `name:ip` or `name:host-gateway`, for names the server's DNS can't resolve |
 | CA volume / CA file in volume | — | A private root CA for a self-hosted relay (below). Only that one file is mounted |
 | Stop after inactivity | 7200 s | The agent stops itself after this long without work. `0` keeps it running |
 | CPU / memory limit | `2` / `4g` | Container limits |
@@ -49,15 +43,16 @@ Desktop, not in these settings.
 
 ## Self-hosted relay with a private CA
 
-If your relay's certificate comes from your own CA, the stock agent image
-can't connect: its relay socket only trusts public roots compiled into the
-binary (`invalid peer certificate: UnknownIssuer`). Build the image with
-native roots — a one-line change, see [docs/native-roots.md](docs/native-roots.md) —
-then set **Agent image** to it and point **CA volume** at the volume that holds
-your root certificate (for step-ca, its data volume with
-`certs/root_ca.crt`). The provider adds that CA next to the public ones, so
-model APIs and git hosts keep working, and a rotated root is picked up on the
-next Start.
+If your relay's certificate comes from your own CA, point **CA volume** at the
+Docker volume on the server that holds the root certificate and set **CA file
+in volume** to its path — for step-ca, its data volume and `certs/root_ca.crt`.
+The provider adds that CA next to the public ones, so model APIs and git hosts
+keep working, and a rotated root is picked up on the next Start.
+
+This works because the default agent image is upstream's `buzz-sprig` built
+with native TLS roots; the stock image only trusts roots compiled into it. The
+image is rebuilt from upstream by this repo's `sprig-image` workflow; see
+[docs/native-roots.md](docs/native-roots.md).
 
 ## How it behaves
 
@@ -71,7 +66,7 @@ next Start.
 - **Stopped stays stopped.** The restart policy is `no`; after a server reboot,
   press Start again.
 - **Deleting an agent in Desktop leaves its container.** Remove it with
-  `docker --context my-server rm buzz-agent-<id>`.
+  `docker -H ssh://you@your-server rm buzz-agent-<id>`.
 
 ## Security
 
@@ -96,6 +91,9 @@ so an agent behaves the same on either.
 ```sh
 echo '{"op":"info"}' | buzz-backend-docker
 ```
+
+Agent containers are named `buzz-agent-<first 12 hex of the agent's pubkey>`
+and labeled `app.kubernetes.io/managed-by=buzz-backend-docker`.
 
 ## Development
 

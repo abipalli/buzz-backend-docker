@@ -4,7 +4,7 @@
 use serde_json::{json, Value};
 
 pub const DEFAULT_IMAGE: &str =
-    "ghcr.io/block/buzz-sprig@sha256:65b061aee024feefd23fc5552a0895c1c9c1b3c0278a6b0932e69ffadb9d7e58";
+    "ghcr.io/abipalli/buzz-sprig@sha256:9e8e8134868e76481688bd459d80fdabb582bd51260e5ac2c0079323b72ceca4";
 pub const DEFAULT_INACTIVITY_SECONDS: u64 = 7200;
 pub const DEFAULT_CPUS: &str = "2";
 pub const DEFAULT_MEMORY: &str = "4g";
@@ -15,6 +15,7 @@ const SECRET_WORDS: [&str; 5] = ["secret", "password", "token", "key", "credenti
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct ProviderConfig {
+    pub host: Option<String>,
     pub context: Option<String>,
     pub image: String,
     pub network: Option<String>,
@@ -76,6 +77,34 @@ fn string_field(
     }
 }
 
+/// A Docker daemon address as `docker -H` accepts it. The URL may name a user
+/// but never carry a password: credentials stay in the SSH agent or config.
+pub fn validate_host(host: &str) -> Result<(), String> {
+    let Some((scheme, rest)) = host.split_once("://") else {
+        return Err(format!(
+            "Docker host {host:?} must look like ssh://user@server or tcp://server:2376"
+        ));
+    };
+    if !matches!(scheme, "ssh" | "tcp" | "unix" | "npipe") || rest.is_empty() {
+        return Err(format!(
+            "Docker host {host:?} must start with ssh://, tcp://, unix:// or npipe://"
+        ));
+    }
+    if host.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(format!("Docker host {host:?} contains whitespace"));
+    }
+    let authority = rest.split('/').next().unwrap_or_default();
+    if authority
+        .split_once('@')
+        .is_some_and(|(user, _)| user.contains(':'))
+    {
+        return Err(
+            "Docker host must not contain a password; use an SSH key or your SSH config".into(),
+        );
+    }
+    Ok(())
+}
+
 fn is_docker_name(s: &str) -> bool {
     let mut chars = s.chars();
     matches!(chars.next(), Some(c) if c.is_ascii_alphanumeric())
@@ -96,7 +125,14 @@ fn is_host_entry(s: &str) -> bool {
 pub fn parse(cfg: &Value) -> Result<ProviderConfig, String> {
     let map = validate_shape(cfg)?;
 
+    let host = string_field(map, "host")?;
+    if let Some(h) = &host {
+        validate_host(h)?;
+    }
     let context = string_field(map, "context")?;
+    if host.is_some() && context.is_some() {
+        return Err("set either provider_config.host or provider_config.context, not both".into());
+    }
     if let Some(c) = &context {
         if !is_docker_name(c) {
             return Err(format!(
@@ -196,6 +232,7 @@ pub fn parse(cfg: &Value) -> Result<ProviderConfig, String> {
     }
 
     Ok(ProviderConfig {
+        host,
         context,
         image,
         network,
@@ -212,7 +249,8 @@ pub fn config_schema() -> Value {
     json!({
         "type": "object",
         "properties": {
-            "context": {"type": "string", "title": "Docker context", "description": "Name from `docker context ls`; empty uses the current context. Credentials come from the context, never from these settings.", "default": ""},
+            "host": {"type": "string", "title": "Docker host", "description": "The server that runs the agent, e.g. ssh://you@your-server (port: ssh://you@your-server:2222). Uses your SSH keys; empty uses this machine's Docker.", "default": ""},
+            "context": {"type": "string", "title": "Docker context", "description": "Alternative to Docker host: a name from `docker context ls`.", "default": ""},
             "image": {"type": "string", "title": "Agent image", "description": "Must contain buzz-acp (buzz-sprig or an image built FROM it). Pinned by tag or digest.", "default": DEFAULT_IMAGE},
             "network": {"type": "string", "title": "Docker network", "description": "Existing network to attach the agent to; empty uses the default bridge.", "default": ""},
             "add_hosts": {"type": "string", "title": "Extra hosts", "description": "Comma-separated host:ip or host:host-gateway entries, e.g. relay.example.internal:host-gateway", "default": ""},
@@ -228,6 +266,28 @@ pub fn config_schema() -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn docker_hosts_are_validated() {
+        for ok in [
+            "ssh://abdev@100.64.0.3:2283",
+            "ssh://server",
+            "tcp://10.0.0.2:2376",
+            "unix:///var/run/docker.sock",
+        ] {
+            assert!(parse(&json!({"host": ok})).is_ok(), "{ok} refused");
+        }
+        for bad in [
+            "server",
+            "http://server",
+            "ssh://",
+            "ssh://me:hunter2@server",
+            "ssh://me@server bad",
+        ] {
+            assert!(parse(&json!({"host": bad})).is_err(), "{bad} accepted");
+        }
+        assert!(parse(&json!({"host": "ssh://s", "context": "c"})).is_err());
+    }
 
     #[test]
     fn empty_config_takes_defaults() {

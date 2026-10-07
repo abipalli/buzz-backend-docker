@@ -67,6 +67,7 @@ pub fn cli_reserved(key: &str) -> bool {
 }
 
 pub struct DockerCli {
+    pub host: Option<String>,
     pub context: Option<String>,
 }
 
@@ -80,11 +81,62 @@ impl DockerCli {
             }
         }
         cmd.env("PATH", augmented_path());
-        if let Some(ctx) = &self.context {
+        if let Some(host) = &self.host {
+            cmd.args(["-H", host]);
+        } else if let Some(ctx) = &self.context {
             cmd.args(["--context", ctx]);
         }
         cmd.stdin(Stdio::null());
         cmd
+    }
+
+    /// Create `name` if it does not exist. Never modifies or removes an
+    /// existing network.
+    pub fn ensure_network(&self, name: &str) -> Result<(), String> {
+        let out = self
+            .command()
+            .args(["network", "inspect", "--format", "{{.Name}}", name])
+            .output()
+            .map_err(|e| format!("could not run docker: {e}"))?;
+        if out.status.success() {
+            return Ok(());
+        }
+        let err = stderr_text(&out);
+        if !err.to_ascii_lowercase().contains("not found")
+            && !err.to_ascii_lowercase().contains("no such")
+        {
+            return Err(format!("docker network inspect failed: {err}"));
+        }
+        let label = format!(
+            "{}={}",
+            crate::naming::LABEL_MANAGED_BY,
+            crate::naming::MANAGED_BY
+        );
+        let out = self
+            .command()
+            .args(["network", "create", "--label", &label, name])
+            .output()
+            .map_err(|e| format!("could not run docker: {e}"))?;
+        if out.status.success() || stderr_text(&out).contains("already exists") {
+            return Ok(());
+        }
+        Err(format!(
+            "could not create network {name}: {}",
+            stderr_text(&out)
+        ))
+    }
+
+    /// Server version, as a reachability check for `setup`.
+    pub fn server_version(&self) -> Result<String, String> {
+        let out = self
+            .command()
+            .args(["version", "--format", "{{.Server.Version}}"])
+            .output()
+            .map_err(|e| format!("could not run docker: {e} (install Docker Desktop, or just the CLI with: brew install docker)"))?;
+        if out.status.success() {
+            return Ok(String::from_utf8_lossy(&out.stdout).trim().to_string());
+        }
+        Err(stderr_text(&out))
     }
 }
 
@@ -233,9 +285,10 @@ impl Substrate for DockerCli {
     }
 
     fn describe(&self) -> String {
-        match &self.context {
-            Some(ctx) => format!("docker --context {ctx}"),
-            None => "docker".to_string(),
+        match (&self.host, &self.context) {
+            (Some(host), _) => format!("docker -H {host}"),
+            (None, Some(ctx)) => format!("docker --context {ctx}"),
+            (None, None) => "docker".to_string(),
         }
     }
 }
