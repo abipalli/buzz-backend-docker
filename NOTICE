@@ -1,0 +1,11 @@
+buzz-backend-docker
+Copyright 2026 The buzz-backend-docker contributors
+
+This product includes software derived from Buzz (https://github.com/block/buzz),
+licensed under the Apache License, Version 2.0:
+
+  src/wire.rs  — from crates/buzz-backend-kubernetes/src/wire.rs
+  src/env.rs   — from crates/buzz-backend-kubernetes/src/env.rs
+
+Modifications: provider name and description, Docker-specific error messages,
+and the environment size limit's wording.

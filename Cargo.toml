@@ -1,0 +1,22 @@
+[package]
+name = "buzz-backend-docker"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+license = "Apache-2.0"
+description = "Buzz remote-agent backend provider that runs agents as containers on a Docker host"
+repository = "https://github.com/abipalli/buzz-backend-docker"
+keywords = ["buzz", "nostr", "agents", "docker"]
+categories = ["command-line-utilities"]
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+sha2 = "0.10"
+hex = "0.4"
+rand = "0.8"
+nostr = { version = "0.44", default-features = false, features = ["std"] }
+
+[profile.release]
+strip = true
+lto = true
