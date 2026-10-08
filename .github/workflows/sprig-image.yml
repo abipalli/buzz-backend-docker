@@ -1,7 +1,8 @@
 name: sprig-image
 
 # Builds block/buzz's agent runtime (buzz-sprig) with native TLS roots, so
-# agents trust the system store and any private CA mounted by the provider.
+# agents trust the system store and any private CA mounted by the provider,
+# plus Desktop's agent workspace guide (AGENTS.md, buzz-cli skill).
 # See docs/native-roots.md.
 
 on:
@@ -40,6 +41,16 @@ jobs:
           sed -i 's/"rustls-tls-webpki-roots"/"rustls-tls-native-roots"/' Cargo.toml
           sed -i 's/cargo build --locked --profile sprig/cargo build --profile sprig/' Dockerfile.sprig
           git diff --stat
+      - name: Add the Buzz Desktop agent workspace guide
+        run: |
+          mkdir -p nest
+          cp desktop/src-tauri/src/managed_agents/nest_agents.md nest/AGENTS.md
+          cp desktop/src-tauri/src/managed_agents/nest_skill.md nest/SKILL.md
+          cat >> Dockerfile.sprig <<'DOCKERFILE'
+          COPY --chown=agent:agent nest/AGENTS.md /home/agent/AGENTS.md
+          COPY --chown=agent:agent nest/SKILL.md /home/agent/.agents/skills/buzz-cli/SKILL.md
+          DOCKERFILE
+          tail -3 Dockerfile.sprig
       - name: Build and push
         run: |
           echo "${{ github.token }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
