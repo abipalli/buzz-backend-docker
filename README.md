@@ -39,7 +39,7 @@ Only **Docker host** is needed; the rest have working defaults.
 | Setting | Default | What it does |
 |---|---|---|
 | Docker host | this machine | The server that runs the agent, e.g. `ssh://agents` (an SSH profile) or `ssh://you@your-server`. Uses your SSH setup; never put a password here |
-| Docker context | — | Alternative to Docker host: a name from `docker context ls` |
+| Docker context | — | Alternative to Docker host: a name from `docker context ls`. Ignored when Docker host is set |
 | Agent image | `buzz-sprig` with native TLS roots, pinned | The agent runtime. Custom images must be built `FROM` it. `:latest` is refused |
 | Docker network | default bridge | Network to join; created if missing. Give agents their own; `host` is refused |
 | Extra hosts | — | `name:ip` or `name:host-gateway`, for names the server's DNS can't resolve |

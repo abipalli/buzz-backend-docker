@@ -130,9 +130,7 @@ pub fn parse(cfg: &Value) -> Result<ProviderConfig, String> {
         validate_host(h)?;
     }
     let context = string_field(map, "context")?;
-    if host.is_some() && context.is_some() {
-        return Err("set either provider_config.host or provider_config.context, not both".into());
-    }
+    let context = if host.is_some() { None } else { context };
     if let Some(c) = &context {
         if !is_docker_name(c) {
             return Err(format!(
@@ -250,7 +248,7 @@ pub fn config_schema() -> Value {
         "type": "object",
         "properties": {
             "host": {"type": "string", "title": "Docker host", "description": "The server that runs the agent, e.g. ssh://you@your-server (port: ssh://you@your-server:2222). Uses your SSH keys; empty uses this machine's Docker.", "default": ""},
-            "context": {"type": "string", "title": "Docker context", "description": "Alternative to Docker host: a name from `docker context ls`.", "default": ""},
+            "context": {"type": "string", "title": "Docker context", "description": "Alternative to Docker host: a name from `docker context ls`. Ignored when Docker host is set.", "default": ""},
             "image": {"type": "string", "title": "Agent image", "description": "Must contain buzz-acp (buzz-sprig or an image built FROM it). Pinned by tag or digest.", "default": DEFAULT_IMAGE},
             "network": {"type": "string", "title": "Docker network", "description": "Existing network to attach the agent to; empty uses the default bridge.", "default": ""},
             "add_hosts": {"type": "string", "title": "Extra hosts", "description": "Comma-separated host:ip or host:host-gateway entries, e.g. relay.example.internal:host-gateway", "default": ""},
@@ -286,7 +284,12 @@ mod tests {
         ] {
             assert!(parse(&json!({"host": bad})).is_err(), "{bad} accepted");
         }
-        assert!(parse(&json!({"host": "ssh://s", "context": "c"})).is_err());
+        let both = parse(&json!({"host": "ssh://s", "context": "c"})).unwrap();
+        assert_eq!(
+            (both.host.as_deref(), both.context),
+            (Some("ssh://s"), None),
+            "host must win over context"
+        );
     }
 
     #[test]
