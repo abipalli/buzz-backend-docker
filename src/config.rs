@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 pub const DEFAULT_IMAGE: &str =
     "ghcr.io/abipalli/buzz-sprig@sha256:9e8e8134868e76481688bd459d80fdabb582bd51260e5ac2c0079323b72ceca4";
 pub const DEFAULT_INACTIVITY_SECONDS: u64 = 7200;
+pub const DEFAULT_NETWORK: &str = "buzz-agents";
 pub const DEFAULT_CPUS: &str = "2";
 pub const DEFAULT_MEMORY: &str = "4g";
 
@@ -146,7 +147,8 @@ pub fn parse(cfg: &Value) -> Result<ProviderConfig, String> {
         ));
     }
 
-    let network = string_field(map, "network")?;
+    let network =
+        Some(string_field(map, "network")?.unwrap_or_else(|| DEFAULT_NETWORK.to_string()));
     if let Some(n) = &network {
         if !is_docker_name(n) || matches!(n.as_str(), "host" | "none") {
             return Err(format!(
@@ -250,7 +252,7 @@ pub fn config_schema() -> Value {
             "host": {"type": "string", "title": "Docker host", "description": "The server that runs the agent, e.g. ssh://you@your-server (port: ssh://you@your-server:2222). Uses your SSH keys; empty uses this machine's Docker.", "default": ""},
             "context": {"type": "string", "title": "Docker context", "description": "Alternative to Docker host: a name from `docker context ls`. Ignored when Docker host is set.", "default": ""},
             "image": {"type": "string", "title": "Agent image", "description": "Must contain buzz-acp (buzz-sprig or an image built FROM it). Pinned by tag or digest.", "default": DEFAULT_IMAGE},
-            "network": {"type": "string", "title": "Docker network", "description": "Existing network to attach the agent to; empty uses the default bridge.", "default": ""},
+            "network": {"type": "string", "title": "Docker network", "description": "Network the agent joins; created if missing. Its DNS follows the server's, so names your server resolves work for agents too.", "default": DEFAULT_NETWORK},
             "add_hosts": {"type": "string", "title": "Extra hosts", "description": "Comma-separated host:ip or host:host-gateway entries, e.g. relay.example.internal:host-gateway", "default": ""},
             "ca_volume": {"type": "string", "title": "CA volume", "description": "Volume on the Docker host holding a private root CA the agent must trust (for self-hosted relays).", "default": ""},
             "ca_volume_subpath": {"type": "string", "title": "CA file in volume", "description": "Path of the CA certificate inside ca_volume, e.g. certs/root_ca.crt", "default": ""},
@@ -296,6 +298,7 @@ mod tests {
     fn empty_config_takes_defaults() {
         let c = parse(&json!({})).unwrap();
         assert_eq!(c.image, DEFAULT_IMAGE);
+        assert_eq!(c.network.as_deref(), Some(DEFAULT_NETWORK));
         assert_eq!(c.inactivity_seconds, DEFAULT_INACTIVITY_SECONDS);
         assert_eq!(
             (c.cpus.as_str(), c.memory.as_str()),

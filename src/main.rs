@@ -160,7 +160,8 @@ fn prepare(
         memory: cfg.memory.clone(),
         stop_timeout_secs: STOP_TIMEOUT_SECS,
     };
-    Ok((cfg, identity, reconcile::Desired { spec, env }))
+    let command = env.get("BUZZ_ACP_AGENT_COMMAND").cloned();
+    Ok((cfg, identity, reconcile::Desired { spec, env, command }))
 }
 
 #[cfg(test)]

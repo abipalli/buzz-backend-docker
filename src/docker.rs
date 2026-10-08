@@ -47,6 +47,9 @@ pub trait Substrate {
     fn run(&self, spec: &RunSpec, env: &BTreeMap<String, String>) -> Result<String, RunError>;
     fn remove(&self, id: &str) -> Result<RemoveOutcome, String>;
     fn describe(&self) -> String;
+    /// Whether `command` resolves on the image's PATH, checked before a
+    /// container is created so a missing runtime fails Start immediately.
+    fn image_has_command(&self, image: &str, command: &str) -> Result<bool, String>;
 }
 
 /// Environment the docker CLI itself reads. An agent variable with one of
@@ -282,6 +285,40 @@ impl Substrate for DockerCli {
             return Ok(RemoveOutcome::StillRunning);
         }
         Err(format!("docker rm failed: {err}"))
+    }
+
+    fn image_has_command(&self, image: &str, command: &str) -> Result<bool, String> {
+        let out = self
+            .command()
+            .args([
+                "run",
+                "--rm",
+                "--pull",
+                "missing",
+                "--network",
+                "none",
+                "--cap-drop",
+                "ALL",
+            ])
+            .args([
+                "--entrypoint",
+                "sh",
+                image,
+                "-c",
+                "command -v \"$1\" >/dev/null",
+                "sh",
+                command,
+            ])
+            .output()
+            .map_err(|e| format!("could not run docker: {e}"))?;
+        match out.status.code() {
+            Some(0) => Ok(true),
+            Some(1) | Some(127) => Ok(false),
+            _ => Err(format!(
+                "could not inspect the agent image {image}: {}",
+                stderr_text(&out)
+            )),
+        }
     }
 
     fn describe(&self) -> String {

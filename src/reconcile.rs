@@ -10,6 +10,8 @@ use std::time::{Duration, Instant};
 pub struct Desired {
     pub spec: RunSpec,
     pub env: BTreeMap<String, String>,
+    /// The ACP agent the harness will spawn (`launch.command`), if any.
+    pub command: Option<String>,
 }
 
 pub struct Timing {
@@ -54,6 +56,16 @@ pub fn deploy(
             if attempted {
                 return Err(attempt_error
                     .unwrap_or_else(|| format!("{name} disappeared right after it was created")));
+            }
+            if let Some(command) = &desired.command {
+                if !sub.image_has_command(&desired.spec.image, command)? {
+                    return Err(format!(
+                        "the agent runtime `{command}` isn't in the agent image ({}). Choose the \
+                         Buzz agent runtime (buzz-agent), or set Agent image to one built FROM \
+                         buzz-sprig that includes {command}",
+                        desired.spec.image
+                    ));
+                }
             }
             attempted = true;
             match create(sub, desired) {
@@ -146,6 +158,7 @@ mod tests {
         removes: RefCell<u32>,
         on_run: RefCell<Option<RunHook>>,
         dies_after_inspects: RefCell<Option<u32>>,
+        missing_commands: RefCell<Vec<String>>,
     }
 
     impl Substrate for Fake {
@@ -193,6 +206,9 @@ mod tests {
         fn describe(&self) -> String {
             "docker".into()
         }
+        fn image_has_command(&self, _image: &str, command: &str) -> Result<bool, String> {
+            Ok(!self.missing_commands.borrow().iter().any(|c| c == command))
+        }
     }
 
     fn identity() -> AgentIdentity {
@@ -214,6 +230,7 @@ mod tests {
                 stop_timeout_secs: 60,
             },
             env: BTreeMap::from([("BUZZ_RELAY_URL".to_string(), "wss://r".to_string())]),
+            command: Some("buzz-agent".into()),
         }
     }
 
@@ -340,6 +357,18 @@ mod tests {
         fn describe(&self) -> String {
             "docker".into()
         }
+        fn image_has_command(&self, image: &str, command: &str) -> Result<bool, String> {
+            self.inner.image_has_command(image, command)
+        }
+    }
+
+    #[test]
+    fn missing_runtime_is_refused_before_anything_is_created() {
+        let fake = Fake::default();
+        fake.missing_commands.borrow_mut().push("buzz-agent".into());
+        let err = deploy(&fake, &identity(), &desired(), &fast()).unwrap_err();
+        assert!(err.contains("isn't in the agent image"), "{err}");
+        assert!(fake.runs.borrow().is_empty());
     }
 
     #[test]

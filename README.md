@@ -41,7 +41,7 @@ Only **Docker host** is needed; the rest have working defaults.
 | Docker host | this machine | The server that runs the agent, e.g. `ssh://agents` (an SSH profile) or `ssh://you@your-server`. Uses your SSH setup; never put a password here |
 | Docker context | — | Alternative to Docker host: a name from `docker context ls`. Ignored when Docker host is set |
 | Agent image | `buzz-sprig` with native TLS roots, pinned | The agent runtime. Custom images must be built `FROM` it. `:latest` is refused |
-| Docker network | default bridge | Network to join; created if missing. Give agents their own; `host` is refused |
+| Docker network | `buzz-agents` | Network to join; created if missing. A dedicated network gets DNS that follows the server's, so names the server resolves work for agents. `host` is refused |
 | Extra hosts | — | `name:ip` or `name:host-gateway`, for names the server's DNS can't resolve |
 | CA volume / CA file in volume | — | A private root CA for a self-hosted relay (below). Only that one file is mounted |
 | Stop after inactivity | 7200 s | The agent stops itself after this long without work. `0` keeps it running |
@@ -49,6 +49,19 @@ Only **Docker host** is needed; the rest have working defaults.
 
 Secrets such as model API keys go in the agent's **environment variables** in
 Desktop, not in these settings.
+
+**Runtime:** the default image contains Buzz's own agent, so choose the **Buzz
+agent** runtime (`buzz-agent`) in Desktop. Goose, Claude Code or Codex need a
+custom image built `FROM` the default one; Start refuses a runtime the image
+doesn't have. For an OpenAI-compatible endpoint, set these environment
+variables on the agent:
+
+```
+BUZZ_AGENT_PROVIDER=openai
+OPENAI_COMPAT_BASE_URL=https://your-llm-endpoint/v1
+OPENAI_COMPAT_MODEL=<model>
+OPENAI_COMPAT_API_KEY=<key>
+```
 
 ## Self-hosted relay with a private CA
 
