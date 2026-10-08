@@ -40,7 +40,7 @@ Only **Docker host** is needed; the rest have working defaults.
 |---|---|---|
 | Docker host | this machine | The server that runs the agent, e.g. `ssh://agents` (an SSH profile) or `ssh://you@your-server`. Uses your SSH setup; never put a password here |
 | Docker context | — | Alternative to Docker host: a name from `docker context ls`. Ignored when Docker host is set |
-| Agent image | `buzz-sprig` with native TLS roots, pinned | The agent runtime. Custom images must be built `FROM` it. `:latest` is refused |
+| Agent image | `buzz-sprig` with native TLS roots and Desktop's agent guide, pinned | The agent runtime, including the `AGENTS.md` and `buzz-cli` skill that teach agents to reply with `buzz messages send`. Custom images must be built `FROM` it. `:latest` is refused |
 | Docker network | `buzz-agents` | Network to join; created if missing. A dedicated network gets DNS that follows the server's, so names the server resolves work for agents. `host` is refused |
 | Extra hosts | — | `name:ip` or `name:host-gateway`, for names the server's DNS can't resolve |
 | CA volume / CA file in volume | — | A private root CA for a self-hosted relay (below). Only that one file is mounted |

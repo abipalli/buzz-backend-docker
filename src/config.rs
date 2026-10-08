@@ -4,7 +4,7 @@
 use serde_json::{json, Value};
 
 pub const DEFAULT_IMAGE: &str =
-    "ghcr.io/abipalli/buzz-sprig@sha256:9e8e8134868e76481688bd459d80fdabb582bd51260e5ac2c0079323b72ceca4";
+    "ghcr.io/abipalli/buzz-sprig@sha256:c3a447e2f568c95b673c13c4071cad1033b222c9b44c2bb842b450a89d71a7d5";
 pub const DEFAULT_INACTIVITY_SECONDS: u64 = 7200;
 pub const DEFAULT_NETWORK: &str = "buzz-agents";
 pub const DEFAULT_CPUS: &str = "2";
